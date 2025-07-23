@@ -2890,16 +2890,6 @@
             const content = messageInput.value.trim();
             if (!content) return;
 
-            // Auto-ban for inappropriate content
-            const bannedWords = ['rasis', 'bullying', 'pelecehan', 'ancaman', 'kontol', 'memek', 'anjing', 'asu', 'bangsat', 'bajingan', 'brengsek']; // Add more banned words as needed
-            for (const word of bannedWords) {
-                if (content.toLowerCase().includes(word)) {
-                    await permBanUser(currentUser.uid, 'Menggunakan bahasa yang tidak pantas.');
-                    alert('Anda telah diblokir secara permanen karena menggunakan bahasa yang tidak pantas.');
-                    return;
-                }
-            }
-
             // Get receiver's language preference for automatic translation
             let receiverLanguage = 'en';
             try {
