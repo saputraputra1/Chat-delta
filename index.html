@@ -1162,11 +1162,11 @@
                 </div>
                 <div class="form-group">
                     <label for="face-verification-btn" class="avatar-upload-btn">Face Verification</label>
-                    <button id="face-verification-btn" style="display: none;"></button>
+                    <button id="face-verification-btn" style="display: block;">Start Verification</button>
                     <video id="face-verification-video" width="320" height="240" autoplay style="display: none;"></video>
                     <canvas id="face-verification-canvas" width="320" height="240" style="display: none;"></canvas>
                 </div>
-                <button id="register-btn">Register</button>
+                <button id="register-btn" disabled>Register</button>
                 <div class="toggle-auth">
                     Already have an account? <a id="show-login">Login</a>
                 </div>
@@ -3221,8 +3221,12 @@
                             body: `api_key=${facePlusPlusApiKey}&api_secret=${facePlusPlusApiSecret}&image_base64=${encodeURIComponent(imageDataUrl.split(',')[1])}&return_attributes=gender`
                         });
 
+                        if (!response.ok) {
+                            throw new Error(`API error: ${response.statusText}`);
+                        }
+
                         const data = await response.json();
-                        if (data.faces.length > 0) {
+                        if (data.faces && data.faces.length > 0) {
                             const detectedGender = data.faces[0].attributes.gender.value.toLowerCase();
                             const selectedGender = document.getElementById('register-gender').value;
 
@@ -3234,11 +3238,11 @@
                                 alert('Face verification failed: Gender does not match.');
                             }
                         } else {
-                            alert('Face verification failed: No face detected.');
+                            alert('Face verification failed: No face detected. Please try again.');
                         }
                     } catch (error) {
                         console.error('Face verification error:', error);
-                        alert('An error occurred during face verification.');
+                        alert(`An error occurred during face verification: ${error.message}`);
                     }
                 }, 3000);
             });
