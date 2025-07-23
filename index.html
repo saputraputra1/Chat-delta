@@ -1289,15 +1289,7 @@
         <div id="chat-container" class="chat-container">
             <div class="chat-header">
                 <h2>Global Chat Room</h2>
-                <div id="active-members-container" style="color: #aaa; font-size: 0.9rem;">
-                    <i class="fas fa-users"></i>
-                    <span id="active-members-count">0</span> members active
-                </div>
                 <div class="header-buttons">
-                    <button id="global-group-btn" class="profile-btn tooltip" style="background-color: #FFC107;">
-                        <i class="fas fa-users"></i>
-                        <span class="tooltiptext">Global Group</span>
-                    </button>
                     <button id="profile-btn" class="profile-btn tooltip">
                         <i class="fas fa-user"></i>
                         <span class="tooltiptext">Profile</span>
@@ -1348,33 +1340,9 @@
                             <i class="fas fa-book-open"></i>
                             <span class="tooltiptext">Stories</span>
                         </button>
-                        <button id="find-match-btn" class="control-btn tooltip" style="background-color: #E91E63;">
-                            <i class="fas fa-heart"></i>
-                            <span class="tooltiptext">Find Match</span>
-                        </button>
                     </div>
                 </div>
             </div>
-
-    <!-- Find Match Modal -->
-    <div id="find-match-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 100; display: flex; align-items: center; justify-content: center;">
-        <div id="find-match-container" class="auth-form" style="width: 90%; max-width: 400px;">
-            <h2>Find a Match</h2>
-            <div class="form-group">
-                <label for="match-gender-filter">I'm looking for:</label>
-                <select id="match-gender-filter">
-                    <option value="all">Anyone</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                </select>
-            </div>
-            <button id="start-match-search-btn">Start Searching</button>
-            <div id="match-result-container" style="display: none; margin-top: 20px;">
-                <!-- Match profile will be displayed here -->
-            </div>
-            <button id="close-match-modal-btn" style="background-color: #f44336; margin-top: 10px;">Close</button>
-        </div>
-    </div>
             
             <div class="chat-main">
                 <div class="users-sidebar">
@@ -1422,7 +1390,6 @@
                         </div>
                     </div>
                     <div id="chat-messages-container" class="chat-messages-container"></div>
-                    <div id="typing-indicator" style="display: none; color: #aaa; font-style: italic; padding: 0 10px;"></div>
                     <div class="message-input-container">
                         <input type="text" id="message-input" class="message-input" placeholder="Type your message...">
                         <button id="send-btn" class="send-button">
@@ -1613,15 +1580,6 @@
         const addStoryMediaBtn = document.getElementById('add-story-media-btn');
         const postStoryBtn = document.getElementById('post-story-btn');
         const storiesList = document.getElementById('stories-list');
-        const globalGroupBtn = document.getElementById('global-group-btn');
-        const activeMembersCount = document.getElementById('active-members-count');
-        const typingIndicator = document.getElementById('typing-indicator');
-        const findMatchBtn = document.getElementById('find-match-btn');
-        const findMatchModal = document.getElementById('find-match-modal');
-        const closeMatchModalBtn = document.getElementById('close-match-modal-btn');
-        const startMatchSearchBtn = document.getElementById('start-match-search-btn');
-        const matchResultContainer = document.getElementById('match-result-container');
-        const matchGenderFilter = document.getElementById('match-gender-filter');
 
         // Current user data
         let currentUser = null;
@@ -1640,7 +1598,6 @@
         let isAdmin = false; // Flag to check if current user is admin
         const adminEmails = ['admin@example.com']; // List of admin emails
         let showOnlineOnly = true; // Default to show online users only
-        let isGlobalChat = false; // Flag to check if in global chat mode
 
         // Deep Translate API configuration
         const translateApiUrl = 'https://deep-translate1.p.rapidapi.com/language/translate/v2';
@@ -2337,11 +2294,6 @@
                             }
                             
                             userItem.addEventListener('click', () => {
-                                    isGlobalChat = false;
-                                    document.querySelector('.users-sidebar').style.display = 'block';
-                                    document.querySelector('.chat-area').style.width = '';
-                                    document.getElementById('active-members-container').style.display = 'none';
-
                                 // Remove active class from all users
                                 document.querySelectorAll('.user-item').forEach(item => {
                                     item.classList.remove('active');
@@ -2686,15 +2638,13 @@
             const messageElement = document.createElement('div');
             messageElement.className = 'message';
 
-            if (!isGlobalChat && message.receiverId === currentUser.uid && !message.read) {
+            if (message.receiverId === currentUser.uid && !message.read) {
                 messageElement.classList.add('unread');
             }
             
             // Get username and avatar of the sender
             database.ref('users/' + message.senderId).once('value', (snapshot) => {
                 const user = snapshot.val();
-                if (!user) return; // User might have been deleted
-
                 const username = user.username;
                 const avatar = user.avatar || defaultAvatar;
                 
@@ -3029,83 +2979,47 @@
 
         // Send message
         async function sendMessage() {
+            if (!currentChatWith) {
+                alert('Please select a user to chat with');
+                return;
+            }
+
             const content = messageInput.value.trim();
             if (!content) return;
 
-            if (isGlobalChat) {
-                const message = {
-                    senderId: currentUser.uid,
-                    content: content,
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                };
-                database.ref('global_messages').push(message)
-                    .then(() => {
-                        messageInput.value = '';
-                    })
-                    .catch((error) => {
-                        alert('Error sending global message: ' + error.message);
-                    });
-            } else {
-                if (!currentChatWith) {
-                    alert('Please select a user to chat with');
-                    return;
-                }
-                // Get receiver's language preference for automatic translation
-                let receiverLanguage = 'en';
-                try {
-                    const receiverSnapshot = await database.ref('users/' + currentChatWith + '/language').once('value');
-                    receiverLanguage = receiverSnapshot.val() || 'en';
-                } catch (error) {
-                    console.error('Error getting receiver language:', error);
-                }
-
-                // If receiver's language is different from sender's, translate automatically
-                let finalContent = content;
-                if (receiverLanguage !== 'en') {
-                    finalContent = await translateMessage(content, receiverLanguage);
-                }
-
-                const message = {
-                    senderId: currentUser.uid,
-                    receiverId: currentChatWith,
-                    content: finalContent,
-                    timestamp: firebase.database.ServerValue.TIMESTAMP,
-                    conversationId: getConversationId(currentUser.uid, currentChatWith),
-                    read: false,
-                    originalLanguage: 'en', // Assuming sender always types in English
-                    translatedLanguage: receiverLanguage !== 'en' ? receiverLanguage : null
-                };
-
-                database.ref('messages').push(message)
-                    .then(() => {
-                        messageInput.value = '';
-                    })
-                    .catch((error) => {
-                        alert('Error sending message: ' + error.message);
-                    });
+            // Get receiver's language preference for automatic translation
+            let receiverLanguage = 'en';
+            try {
+                const receiverSnapshot = await database.ref('users/' + currentChatWith + '/language').once('value');
+                receiverLanguage = receiverSnapshot.val() || 'en';
+            } catch (error) {
+                console.error('Error getting receiver language:', error);
             }
-        }
 
-        function loadGlobalMessages() {
-            // Join the global chat
-            const memberRef = database.ref('global_chat_members/' + currentUser.uid);
-            memberRef.set({
-                username: currentUser.displayName,
-                lastActive: firebase.database.ServerValue.TIMESTAMP
-            });
-            memberRef.onDisconnect().remove();
+            // If receiver's language is different from sender's, translate automatically
+            let finalContent = content;
+            if (receiverLanguage !== 'en') {
+                finalContent = await translateMessage(content, receiverLanguage);
+            }
 
-            // Listen for changes in active members
-            const membersRef = database.ref('global_chat_members');
-            membersRef.on('value', (snapshot) => {
-                activeMembersCount.textContent = snapshot.numChildren();
-            });
+            const message = {
+                senderId: currentUser.uid,
+                receiverId: currentChatWith,
+                content: finalContent,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                conversationId: getConversationId(currentUser.uid, currentChatWith),
+                read: false,
+                originalLanguage: 'en', // Assuming sender always types in English
+                translatedLanguage: receiverLanguage !== 'en' ? receiverLanguage : null
+            };
 
-            const messagesRef = database.ref('global_messages').limitToLast(100);
-            messagesRef.on('child_added', (snapshot) => {
-                const message = snapshot.val();
-                displayMessage(message);
-            });
+            database.ref('messages').push(message)
+                .then(() => {
+                    messageInput.value = '';
+                })
+                .catch((error) => {
+                    alert('Error sending message: ' + error.message);
+                });
         }
 
         // Send message on button click or Enter key
@@ -3113,29 +3027,6 @@
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 sendMessage();
-            } else if (isGlobalChat) {
-                // Set typing status
-                const typingRef = database.ref('global_typing_status/' + currentUser.uid);
-                typingRef.set(currentUser.displayName);
-                typingRef.onDisconnect().remove();
-                setTimeout(() => typingRef.remove(), 3000); // Remove after 3 seconds
-            }
-        });
-
-        // Listen for typing status
-        const typingRef = database.ref('global_typing_status');
-        typingRef.on('value', (snapshot) => {
-            const typingUsers = snapshot.val();
-            if (typingUsers) {
-                const userNames = Object.values(typingUsers).filter(name => name !== currentUser.displayName);
-                if (userNames.length > 0) {
-                    typingIndicator.textContent = `${userNames.join(', ')} is typing...`;
-                    typingIndicator.style.display = 'block';
-                } else {
-                    typingIndicator.style.display = 'none';
-                }
-            } else {
-                typingIndicator.style.display = 'none';
             }
         });
 
@@ -3256,17 +3147,6 @@
 
         postStoryBtn.addEventListener('click', postStory);
 
-        globalGroupBtn.addEventListener('click', () => {
-            isGlobalChat = true;
-            currentChatWith = null; // No specific user in global chat
-            profileView.style.display = 'none';
-            chatMessagesContainer.innerHTML = ''; // Clear private messages
-            document.querySelector('.users-sidebar').style.display = 'none';
-            document.querySelector('.chat-area').style.width = '100%';
-            document.getElementById('active-members-container').style.display = 'block';
-            loadGlobalMessages();
-        });
-
         storiesList.addEventListener('click', (e) => {
             const target = e.target.closest('.story-action-btn');
             if (!target) return;
@@ -3288,95 +3168,6 @@
             const leaderboardData = await getLeaderboardData();
             displayLeaderboard(leaderboardData, 'replyPercentage');
         });
-
-        findMatchBtn.addEventListener('click', () => {
-            findMatchModal.style.display = 'flex';
-        });
-
-        closeMatchModalBtn.addEventListener('click', () => {
-            findMatchModal.style.display = 'none';
-            matchResultContainer.style.display = 'none';
-            matchResultContainer.innerHTML = '';
-        });
-
-        startMatchSearchBtn.addEventListener('click', findRandomMatch);
-
-        async function findRandomMatch() {
-            const selectedGender = matchGenderFilter.value;
-            const usersRef = database.ref('users');
-
-            usersRef.once('value', (snapshot) => {
-                const users = snapshot.val();
-                let potentialMatches = [];
-
-                for (const userId in users) {
-                    if (userId === currentUser.uid) continue;
-
-                    const user = users[userId];
-                    if (selectedGender === 'all' || user.gender === selectedGender) {
-                        potentialMatches.push({ id: userId, ...user });
-                    }
-                }
-
-                if (potentialMatches.length > 0) {
-                    const randomIndex = Math.floor(Math.random() * potentialMatches.length);
-                    const match = potentialMatches[randomIndex];
-                    displayMatchProfile(match);
-                } else {
-                    alert('No matches found for the selected filter.');
-                }
-            });
-        }
-
-        function displayMatchProfile(match) {
-            matchResultContainer.innerHTML = `
-                <div class="profile-header">
-                    <img class="profile-avatar" src="${match.avatar || defaultAvatar}" alt="${match.username}">
-                    <div class="profile-details">
-                        <div class="profile-name">${match.username}</div>
-                        <div class="profile-country">
-                            <span class="profile-country-flag">${countryFlags[match.country] || '🌍'}</span>
-                            ${countryNames[match.country] || 'Other Country'}
-                        </div>
-                    </div>
-                </div>
-                <div class="profile-description">${match.description || 'No description provided'}</div>
-                <div class="profile-actions" style="margin-top: 15px;">
-                    <button id="like-match-btn" class="follow-btn" data-matchid="${match.id}">Like</button>
-                    <button id="skip-match-btn" class="logout-btn">Skip</button>
-                </div>
-            `;
-            matchResultContainer.style.display = 'block';
-
-            document.getElementById('like-match-btn').addEventListener('click', (e) => {
-                const matchId = e.target.dataset.matchid;
-                handleLike(matchId);
-            });
-
-            document.getElementById('skip-match-btn').addEventListener('click', findRandomMatch);
-        }
-
-        function handleLike(matchId) {
-            const likeRef = database.ref(`likes/${currentUser.uid}/${matchId}`);
-            likeRef.set(true).then(() => {
-                // Check for mutual like
-                database.ref(`likes/${matchId}/${currentUser.uid}`).once('value', (snapshot) => {
-                    if (snapshot.exists()) {
-                        alert(`It's a match! You and ${snapshot.val().username} liked each other.`);
-                        // Create a conversation or some other connection
-                        const conversationId = getConversationId(currentUser.uid, matchId);
-                        database.ref(`conversations/${conversationId}`).set({
-                            user1: currentUser.uid,
-                            user2: matchId,
-                            createdAt: firebase.database.ServerValue.TIMESTAMP
-                        });
-                    } else {
-                        alert('Like sent! We will notify you if they like you back.');
-                    }
-                    findRandomMatch(); // Find next match
-                });
-            });
-        }
 
         async function uploadStoryMedia(file, userId) {
             if (!file) return null;

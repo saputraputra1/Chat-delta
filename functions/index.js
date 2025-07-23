@@ -87,6 +87,23 @@ exports.sendStoryLikeNotification = functions.database.ref('/stories/{storyId}/l
         return null;
     });
 
+exports.updateMessageStatusToDelivered = functions.database.ref('/messages/{messageId}')
+    .onCreate(async (snapshot, context) => {
+        const message = snapshot.val();
+        const receiverId = message.receiverId;
+
+        // We can't directly know if the user is online and has the app open.
+        // A common approach is to check the user's presence status.
+        const userStatusRef = admin.database().ref(`/users/${receiverId}/status`);
+        const userStatusSnapshot = await userStatusRef.once('value');
+
+        if (userStatusSnapshot.val() === 'online') {
+            // If the user is online, we can assume the message is delivered.
+            return snapshot.ref.update({ status: 'delivered' });
+        }
+        return null;
+    });
+
 exports.sendStoryCommentNotification = functions.database.ref('/stories/{storyId}/comments/{commentId}')
     .onCreate(async (snapshot, context) => {
         const storyId = context.params.storyId;
