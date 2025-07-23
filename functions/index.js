@@ -57,3 +57,65 @@ exports.checkUserOnCreate = functions.auth.user().onCreate(async (user) => {
         }
     }
 });
+
+exports.sendStoryLikeNotification = functions.database.ref('/stories/{storyId}/likes/{userId}')
+    .onCreate(async (snapshot, context) => {
+        const storyId = context.params.storyId;
+        const userId = context.params.userId;
+
+        const storySnapshot = await admin.database().ref(`/stories/${storyId}`).once('value');
+        const story = storySnapshot.val();
+
+        if (story.userId !== userId) {
+            const userSnapshot = await admin.database().ref(`/users/${userId}`).once('value');
+            const user = userSnapshot.val();
+
+            const payload = {
+                notification: {
+                    title: 'New Like!',
+                    body: `${user.username} liked your story.`,
+                    icon: user.avatar || '/images/default-avatar.png'
+                }
+            };
+
+            const ownerId = story.userId;
+            const tokensSnapshot = await admin.database().ref(`/users/${ownerId}/fcmTokens`).once('value');
+            const tokens = Object.keys(tokensSnapshot.val());
+
+            return admin.messaging().sendToDevice(tokens, payload);
+        }
+        return null;
+    });
+
+exports.sendStoryCommentNotification = functions.database.ref('/stories/{storyId}/comments/{commentId}')
+    .onCreate(async (snapshot, context) => {
+        const storyId = context.params.storyId;
+        const commentId = context.params.commentId;
+
+        const commentSnapshot = await admin.database().ref(`/stories/${storyId}/comments/${commentId}`).once('value');
+        const comment = commentSnapshot.val();
+        const userId = comment.userId;
+
+        const storySnapshot = await admin.database().ref(`/stories/${storyId}`).once('value');
+        const story = storySnapshot.val();
+
+        if (story.userId !== userId) {
+            const userSnapshot = await admin.database().ref(`/users/${userId}`).once('value');
+            const user = userSnapshot.val();
+
+            const payload = {
+                notification: {
+                    title: 'New Comment!',
+                    body: `${user.username} commented on your story: ${comment.comment}`,
+                    icon: user.avatar || '/images/default-avatar.png'
+                }
+            };
+
+            const ownerId = story.userId;
+            const tokensSnapshot = await admin.database().ref(`/users/${ownerId}/fcmTokens`).once('value');
+            const tokens = Object.keys(tokensSnapshot.val());
+
+            return admin.messaging().sendToDevice(tokens, payload);
+        }
+        return null;
+    });

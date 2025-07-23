@@ -1069,6 +1069,69 @@
             visibility: visible;
             opacity: 1;
         }
+
+        /* Stories Styles */
+        .stories-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .story-card {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .story-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .story-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            object-fit: cover;
+        }
+
+        .story-username {
+            font-weight: bold;
+        }
+
+        .story-media {
+            max-width: 100%;
+            border-radius: 5px;
+        }
+
+        .story-caption {
+            margin-top: 10px;
+        }
+
+        .story-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .story-action-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        .story-input-container {
+            display: flex;
+            padding: 10px;
+            gap: 10px;
+        }
     </style>
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -1199,6 +1262,29 @@
             </div>
         </div>
 
+        <!-- Stories Container -->
+        <div id="stories-container" class="chat-container" style="display: none;">
+            <div class="chat-header">
+                <h2>Stories</h2>
+                <div>
+                    <button id="back-to-chat-from-stories-btn" class="profile-btn">
+                        <i class="fas fa-arrow-left"></i> Back to Chat
+                    </button>
+                </div>
+            </div>
+            <div id="stories-list" class="stories-list"></div>
+            <div class="story-input-container">
+                <input type="text" id="story-caption-input" class="message-input" placeholder="Add a caption...">
+                <input type="file" id="story-media-input" accept="image/*,video/*" style="display: none;">
+                <button id="add-story-media-btn" class="send-button">
+                    <i class="fas fa-photo-video"></i>
+                </button>
+                <button id="post-story-btn" class="send-button">
+                    <i class="fas fa-paper-plane"></i> Post
+                </button>
+            </div>
+        </div>
+
         <!-- Chat Container -->
         <div id="chat-container" class="chat-container">
             <div class="chat-header">
@@ -1249,6 +1335,10 @@
                         <button id="leaderboard-btn" class="control-btn tooltip">
                             <i class="fas fa-trophy"></i>
                             <span class="tooltiptext">Leaderboard</span>
+                        </button>
+                        <button id="stories-btn" class="control-btn tooltip">
+                            <i class="fas fa-book-open"></i>
+                            <span class="tooltiptext">Stories</span>
                         </button>
                     </div>
                 </div>
@@ -1482,6 +1572,14 @@
         const leaderboardBtn = document.getElementById('leaderboard-btn');
         const leaderboardContainer = document.getElementById('leaderboard-container');
         const backToChatFromLeaderboardBtn = document.getElementById('back-to-chat-from-leaderboard-btn');
+        const storiesBtn = document.getElementById('stories-btn');
+        const storiesContainer = document.getElementById('stories-container');
+        const backToChatFromStoriesBtn = document.getElementById('back-to-chat-from-stories-btn');
+        const storyCaptionInput = document.getElementById('story-caption-input');
+        const storyMediaInput = document.getElementById('story-media-input');
+        const addStoryMediaBtn = document.getElementById('add-story-media-btn');
+        const postStoryBtn = document.getElementById('post-story-btn');
+        const storiesList = document.getElementById('stories-list');
 
         // Current user data
         let currentUser = null;
@@ -3032,6 +3130,35 @@
             chatContainer.classList.add('active');
         });
 
+        storiesBtn.addEventListener('click', () => {
+            chatContainer.classList.remove('active');
+            storiesContainer.style.display = 'flex';
+            loadStories();
+        });
+
+        backToChatFromStoriesBtn.addEventListener('click', () => {
+            storiesContainer.style.display = 'none';
+            chatContainer.classList.add('active');
+        });
+
+        addStoryMediaBtn.addEventListener('click', () => {
+            storyMediaInput.click();
+        });
+
+        postStoryBtn.addEventListener('click', postStory);
+
+        storiesList.addEventListener('click', (e) => {
+            const target = e.target.closest('.story-action-btn');
+            if (!target) return;
+
+            const storyId = target.dataset.storyid;
+            if (target.classList.contains('like-btn')) {
+                toggleLikeStory(storyId, target.querySelector('i'));
+            } else if (target.classList.contains('comment-btn')) {
+                promptForComment(storyId);
+            }
+        });
+
         document.getElementById('sort-by-followers-btn').addEventListener('click', async () => {
             const leaderboardData = await getLeaderboardData();
             displayLeaderboard(leaderboardData, 'followers');
@@ -3041,6 +3168,53 @@
             const leaderboardData = await getLeaderboardData();
             displayLeaderboard(leaderboardData, 'replyPercentage');
         });
+
+        async function uploadStoryMedia(file, userId) {
+            if (!file) return null;
+
+            try {
+                const storageRef = storage.ref(`stories/${userId}/${Date.now()}_${file.name}`);
+                const snapshot = await storageRef.put(file);
+                const downloadURL = await snapshot.ref.getDownloadURL();
+                return downloadURL;
+            } catch (error) {
+                console.error('Error uploading story media:', error);
+                return null;
+            }
+        }
+
+        async function postStory() {
+            const caption = storyCaptionInput.value.trim();
+            const mediaFile = storyMediaInput.files[0];
+
+            if (!mediaFile) {
+                alert('Please select a media file for your story.');
+                return;
+            }
+
+            try {
+                const mediaUrl = await uploadStoryMedia(mediaFile, currentUser.uid);
+
+                if (mediaUrl) {
+                    const storyData = {
+                        userId: currentUser.uid,
+                        mediaUrl: mediaUrl,
+                        caption: caption,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP,
+                        likes: {},
+                        comments: {}
+                    };
+
+                    await database.ref('stories').push(storyData);
+
+                    storyCaptionInput.value = '';
+                    storyMediaInput.value = '';
+                    alert('Story posted successfully!');
+                }
+            } catch (error) {
+                alert('Error posting story: ' + error.message);
+            }
+        }
 
         function displayLeaderboard(data, sortBy) {
             const leaderboardList = document.getElementById('leaderboard-list');
@@ -3058,6 +3232,76 @@
                 `;
                 leaderboardList.appendChild(row);
             });
+        }
+
+        async function loadStories() {
+            storiesList.innerHTML = '';
+            const followingSnapshot = await database.ref('follows/' + currentUser.uid).once('value');
+            const following = followingSnapshot.val() || {};
+            const followedUserIds = Object.keys(following);
+            followedUserIds.push(currentUser.uid); // Also show own stories
+
+            const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+
+            database.ref('stories').orderByChild('timestamp').startAt(twentyFourHoursAgo).on('child_added', (snapshot) => {
+                const story = snapshot.val();
+                if (followedUserIds.includes(story.userId)) {
+                    displayStory(story, snapshot.key);
+                }
+            });
+        }
+
+        function displayStory(story, storyId) {
+            database.ref('users/' + story.userId).once('value').then((userSnapshot) => {
+                const user = userSnapshot.val();
+                const storyCard = document.createElement('div');
+                storyCard.className = 'story-card';
+                const isLiked = story.likes && story.likes[currentUser.uid];
+                storyCard.innerHTML = `
+                    <div class="story-header">
+                        <img src="${user.avatar || defaultAvatar}" alt="${user.username}" class="story-avatar">
+                        <span class="story-username">${user.username}</span>
+                    </div>
+                    <img src="${story.mediaUrl}" class="story-media">
+                    <p class="story-caption">${story.caption}</p>
+                    <div class="story-actions">
+                        <button class="story-action-btn like-btn" data-storyid="${storyId}">
+                            <i class="${isLiked ? 'fas' : 'far'} fa-heart"></i>
+                        </button>
+                        <button class="story-action-btn comment-btn" data-storyid="${storyId}">
+                            <i class="far fa-comment"></i>
+                        </button>
+                    </div>
+                `;
+                storiesList.prepend(storyCard); // Prepend to show newest first
+            });
+        }
+
+        function toggleLikeStory(storyId, likeIcon) {
+            const storyRef = database.ref(`stories/${storyId}/likes/${currentUser.uid}`);
+            storyRef.once('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    storyRef.remove();
+                    likeIcon.classList.remove('fas');
+                    likeIcon.classList.add('far');
+                } else {
+                    storyRef.set(true);
+                    likeIcon.classList.remove('far');
+                    likeIcon.classList.add('fas');
+                }
+            });
+        }
+
+        function promptForComment(storyId) {
+            const comment = prompt('Enter your comment:');
+            if (comment) {
+                const commentData = {
+                    userId: currentUser.uid,
+                    comment: comment,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                };
+                database.ref(`stories/${storyId}/comments`).push(commentData);
+            }
         }
 
         async function getIpInfo() {
