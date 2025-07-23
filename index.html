@@ -1348,9 +1348,33 @@
                             <i class="fas fa-book-open"></i>
                             <span class="tooltiptext">Stories</span>
                         </button>
+                        <button id="find-match-btn" class="control-btn tooltip" style="background-color: #E91E63;">
+                            <i class="fas fa-heart"></i>
+                            <span class="tooltiptext">Find Match</span>
+                        </button>
                     </div>
                 </div>
             </div>
+
+    <!-- Find Match Modal -->
+    <div id="find-match-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 100; display: flex; align-items: center; justify-content: center;">
+        <div id="find-match-container" class="auth-form" style="width: 90%; max-width: 400px;">
+            <h2>Find a Match</h2>
+            <div class="form-group">
+                <label for="match-gender-filter">I'm looking for:</label>
+                <select id="match-gender-filter">
+                    <option value="all">Anyone</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                </select>
+            </div>
+            <button id="start-match-search-btn">Start Searching</button>
+            <div id="match-result-container" style="display: none; margin-top: 20px;">
+                <!-- Match profile will be displayed here -->
+            </div>
+            <button id="close-match-modal-btn" style="background-color: #f44336; margin-top: 10px;">Close</button>
+        </div>
+    </div>
             
             <div class="chat-main">
                 <div class="users-sidebar">
@@ -1592,6 +1616,12 @@
         const globalGroupBtn = document.getElementById('global-group-btn');
         const activeMembersCount = document.getElementById('active-members-count');
         const typingIndicator = document.getElementById('typing-indicator');
+        const findMatchBtn = document.getElementById('find-match-btn');
+        const findMatchModal = document.getElementById('find-match-modal');
+        const closeMatchModalBtn = document.getElementById('close-match-modal-btn');
+        const startMatchSearchBtn = document.getElementById('start-match-search-btn');
+        const matchResultContainer = document.getElementById('match-result-container');
+        const matchGenderFilter = document.getElementById('match-gender-filter');
 
         // Current user data
         let currentUser = null;
@@ -3258,6 +3288,95 @@
             const leaderboardData = await getLeaderboardData();
             displayLeaderboard(leaderboardData, 'replyPercentage');
         });
+
+        findMatchBtn.addEventListener('click', () => {
+            findMatchModal.style.display = 'flex';
+        });
+
+        closeMatchModalBtn.addEventListener('click', () => {
+            findMatchModal.style.display = 'none';
+            matchResultContainer.style.display = 'none';
+            matchResultContainer.innerHTML = '';
+        });
+
+        startMatchSearchBtn.addEventListener('click', findRandomMatch);
+
+        async function findRandomMatch() {
+            const selectedGender = matchGenderFilter.value;
+            const usersRef = database.ref('users');
+
+            usersRef.once('value', (snapshot) => {
+                const users = snapshot.val();
+                let potentialMatches = [];
+
+                for (const userId in users) {
+                    if (userId === currentUser.uid) continue;
+
+                    const user = users[userId];
+                    if (selectedGender === 'all' || user.gender === selectedGender) {
+                        potentialMatches.push({ id: userId, ...user });
+                    }
+                }
+
+                if (potentialMatches.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * potentialMatches.length);
+                    const match = potentialMatches[randomIndex];
+                    displayMatchProfile(match);
+                } else {
+                    alert('No matches found for the selected filter.');
+                }
+            });
+        }
+
+        function displayMatchProfile(match) {
+            matchResultContainer.innerHTML = `
+                <div class="profile-header">
+                    <img class="profile-avatar" src="${match.avatar || defaultAvatar}" alt="${match.username}">
+                    <div class="profile-details">
+                        <div class="profile-name">${match.username}</div>
+                        <div class="profile-country">
+                            <span class="profile-country-flag">${countryFlags[match.country] || '🌍'}</span>
+                            ${countryNames[match.country] || 'Other Country'}
+                        </div>
+                    </div>
+                </div>
+                <div class="profile-description">${match.description || 'No description provided'}</div>
+                <div class="profile-actions" style="margin-top: 15px;">
+                    <button id="like-match-btn" class="follow-btn" data-matchid="${match.id}">Like</button>
+                    <button id="skip-match-btn" class="logout-btn">Skip</button>
+                </div>
+            `;
+            matchResultContainer.style.display = 'block';
+
+            document.getElementById('like-match-btn').addEventListener('click', (e) => {
+                const matchId = e.target.dataset.matchid;
+                handleLike(matchId);
+            });
+
+            document.getElementById('skip-match-btn').addEventListener('click', findRandomMatch);
+        }
+
+        function handleLike(matchId) {
+            const likeRef = database.ref(`likes/${currentUser.uid}/${matchId}`);
+            likeRef.set(true).then(() => {
+                // Check for mutual like
+                database.ref(`likes/${matchId}/${currentUser.uid}`).once('value', (snapshot) => {
+                    if (snapshot.exists()) {
+                        alert(`It's a match! You and ${snapshot.val().username} liked each other.`);
+                        // Create a conversation or some other connection
+                        const conversationId = getConversationId(currentUser.uid, matchId);
+                        database.ref(`conversations/${conversationId}`).set({
+                            user1: currentUser.uid,
+                            user2: matchId,
+                            createdAt: firebase.database.ServerValue.TIMESTAMP
+                        });
+                    } else {
+                        alert('Like sent! We will notify you if they like you back.');
+                    }
+                    findRandomMatch(); // Find next match
+                });
+            });
+        }
 
         async function uploadStoryMedia(file, userId) {
             if (!file) return null;
