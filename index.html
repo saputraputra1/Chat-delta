@@ -8,6 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1166,9 +1167,30 @@
                     <video id="face-verification-video" width="320" height="240" autoplay style="display: none;"></video>
                     <canvas id="face-verification-canvas" width="320" height="240" style="display: none;"></canvas>
                 </div>
+                <div class="form-group">
+                    <button type="button" id="start-face-verification-btn" class="profile-btn">Verifikasi Wajah Sekarang</button>
+                    <span id="verification-status" style="margin-left: 10px; font-size: 0.8rem;"></span>
+                </div>
                 <button id="register-btn">Register</button>
                 <div class="toggle-auth">
                     Already have an account? <a id="show-login">Login</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Face Verification Modal -->
+        <div id="face-verification-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; flex-direction: column;">
+            <div style="background-color: #333; padding: 20px; border-radius: 10px; text-align: center;">
+                <h2>Verifikasi Wajah</h2>
+                <p>Posisikan wajah Anda di dalam bingkai.</p>
+                <div style="position: relative; width: 320px; height: 240px; margin: 10px auto;">
+                    <video id="face-video" width="320" height="240" autoplay muted style="border-radius: 5px;"></video>
+                    <canvas id="face-canvas" width="320" height="240" style="display: none;"></canvas>
+                </div>
+                <div id="face-verification-notification" style="margin-top: 10px; font-size: 0.9rem;"></div>
+                <div style="margin-top: 15px;">
+                    <button id="capture-verify-btn" class="profile-btn">Ambil Foto & Verifikasi</button>
+                    <button id="skip-verification-btn" class="logout-btn" style="margin-left: 10px;">Lewati</button>
                 </div>
             </div>
         </div>
@@ -1763,7 +1785,8 @@
                     status: 'online',
                     deviceId: deviceId,
                     language: languageCodes[countryCode] || 'en',
-                    gender: gender
+                    gender: gender,
+                    ...faceVerificationData
                 };
 
                 if (countryCode === 'id') {
@@ -2157,7 +2180,7 @@
                                                             <div class="user-status ${user.status === 'online' && !isBanned ? 'online pulse' : 'offline'}"></div>
                                                             <img class="user-avatar" src="${user.avatar || defaultAvatar}" alt="${user.username}">
                                                             <div class="user-info">
-                                                                <div class="user-name">${user.username}${isBanned ? (isPermanentlyBanned ? ' (Permanently Banned)' : ' (Temporarily Banned)') : ''}</div>
+                                                                <div class="user-name">${user.username} ${user.face_verified ? '✅' : ''}${isBanned ? (isPermanentlyBanned ? ' (Permanently Banned)' : ' (Temporarily Banned)') : ''}</div>
                                                                 <div class="user-country">
                                                                     <span class="country-flag">${countryFlags[user.country] || '🌍'}</span>
                                                                     ${countryNames[user.country] || 'Other Country'}
@@ -2228,7 +2251,7 @@
                 const user = snapshot.val();
                 if (!user) return;
                 
-                viewProfileName.textContent = user.username;
+                viewProfileName.innerHTML = `${user.username} ${user.face_verified ? '✅' : ''}`;
                 viewProfileAvatar.src = user.avatar || defaultAvatar;
                 viewProfileCountry.innerHTML = `
                     <span class="profile-country-flag">${countryFlags[user.country] || '🌍'}</span>
@@ -3170,6 +3193,13 @@
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
+            // Load face-api.js models
+            const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL)
+            ]).catch(error => console.error('Error loading face-api.js models:', error));
+
             populateCountryFilter();
             const ipInfo = await getIpInfo();
             if (ipInfo) {
@@ -3195,59 +3225,81 @@
                 }
             }
 
-            const faceVerificationBtn = document.getElementById('face-verification-btn');
-            const video = document.getElementById('face-verification-video');
-            const canvas = document.getElementById('face-verification-canvas');
-            const registerBtn = document.getElementById('register-btn');
-            let faceVerified = false;
+            const startVerificationBtn = document.getElementById('start-face-verification-btn');
+            const faceVerificationModal = document.getElementById('face-verification-modal');
+            const video = document.getElementById('face-video');
+            const canvas = document.getElementById('face-canvas');
+            const captureBtn = document.getElementById('capture-verify-btn');
+            const skipBtn = document.getElementById('skip-verification-btn');
+            const notification = document.getElementById('face-verification-notification');
+            const verificationStatus = document.getElementById('verification-status');
 
-            faceVerificationBtn.addEventListener('click', async () => {
-                video.style.display = 'block';
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
+            let faceVerificationData = {
+                face_verified: false,
+                face_gender: 'unknown',
+                face_photo_hash: null
+            };
+            let stream = null;
 
-                setTimeout(async () => {
-                    canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
-                    const imageDataUrl = canvas.toDataURL('image/jpeg');
-                    stream.getTracks().forEach(track => track.stop());
-                    video.style.display = 'none';
+            // Simple hash function
+            function simpleHash(s) {
+                let hash = 0;
+                for (let i = 0; i < s.length; i++) {
+                    const char = s.charCodeAt(i);
+                    hash = (hash << 5) - hash + char;
+                    hash |= 0; // Convert to 32bit integer
+                }
+                return hash;
+            }
 
-                    try {
-                        const response = await fetch(facePlusPlusApiUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            body: `api_key=${facePlusPlusApiKey}&api_secret=${facePlusPlusApiSecret}&image_base64=${encodeURIComponent(imageDataUrl.split(',')[1])}&return_attributes=gender`
-                        });
-
-                        const data = await response.json();
-                        if (data.faces.length > 0) {
-                            const detectedGender = data.faces[0].attributes.gender.value.toLowerCase();
-                            const selectedGender = document.getElementById('register-gender').value;
-
-                            if (detectedGender === selectedGender) {
-                                faceVerified = true;
-                                alert('Face verification successful!');
-                                registerBtn.disabled = false;
-                            } else {
-                                alert('Face verification failed: Gender does not match.');
-                            }
-                        } else {
-                            alert('Face verification failed: No face detected.');
-                        }
-                    } catch (error) {
-                        console.error('Face verification error:', error);
-                        alert('An error occurred during face verification.');
-                    }
-                }, 3000);
+            startVerificationBtn.addEventListener('click', async () => {
+                faceVerificationModal.style.display = 'flex';
+                notification.textContent = '';
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                    video.srcObject = stream;
+                } catch (err) {
+                    notification.textContent = 'Kamera tidak dapat diakses. Silakan izinkan akses kamera.';
+                    console.error('Error accessing camera:', err);
+                }
             });
 
-            registerBtn.addEventListener('click', (e) => {
-                if (!faceVerified) {
-                    e.preventDefault();
-                    alert('Please complete face verification first.');
+            captureBtn.addEventListener('click', async () => {
+                notification.textContent = 'Mendeteksi wajah...';
+                canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+                const detection = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions()).withAgeAndGender();
+
+                if (detection) {
+                    const gender = detection.gender;
+                    const canvasData = canvas.toDataURL('image/png');
+                    const photoHash = simpleHash(canvasData);
+
+                    faceVerificationData = {
+                        face_verified: true,
+                        face_gender: gender,
+                        face_photo_hash: photoHash
+                    };
+
+                    notification.textContent = `Verifikasi Berhasil! Jenis Kelamin terdeteksi: ${gender}`;
+                    verificationStatus.textContent = '✅ Terverifikasi';
+
+                    setTimeout(() => {
+                        faceVerificationModal.style.display = 'none';
+                        if (stream) {
+                            stream.getTracks().forEach(track => track.stop());
+                        }
+                    }, 2000);
+                } else {
+                    notification.textContent = 'Wajah tidak terdeteksi. Coba lagi.';
                 }
+            });
+
+            skipBtn.addEventListener('click', () => {
+                faceVerificationModal.style.display = 'none';
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                verificationStatus.textContent = ' dilewati';
             });
         });
     </script>
