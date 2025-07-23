@@ -87,6 +87,38 @@ exports.sendStoryLikeNotification = functions.database.ref('/stories/{storyId}/l
         return null;
     });
 
+exports.sendNewMessageNotification = functions.database.ref('/messages/{messageId}')
+    .onCreate(async (snapshot, context) => {
+        const message = snapshot.val();
+        const receiverId = message.receiverId;
+        const senderId = message.senderId;
+
+        // Get sender's username
+        const senderSnapshot = await admin.database().ref(`/users/${senderId}`).once('value');
+        const sender = senderSnapshot.val();
+
+        // Get receiver's FCM token
+        const receiverSnapshot = await admin.database().ref(`/users/${receiverId}`).once('value');
+        const receiver = receiverSnapshot.val();
+        const fcmToken = receiver.fcmToken;
+
+        if (fcmToken) {
+            const payload = {
+                notification: {
+                    title: `New message from ${sender.username}`,
+                    body: message.content || 'Sent an image.',
+                    icon: sender.avatar || '/images/default-avatar.png'
+                },
+                data: {
+                    senderId: senderId
+                }
+            };
+
+            return admin.messaging().sendToDevice(fcmToken, payload);
+        }
+        return null;
+    });
+
 exports.updateMessageStatusToDelivered = functions.database.ref('/messages/{messageId}')
     .onCreate(async (snapshot, context) => {
         const message = snapshot.val();

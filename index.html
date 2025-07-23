@@ -8,6 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-messaging.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         * {
@@ -1519,6 +1520,7 @@
         const auth = firebase.auth();
         const database = firebase.database();
         const storage = firebase.storage();
+        const messaging = firebase.messaging();
 
         // DOM Elements
         const authContainer = document.getElementById('auth-container');
@@ -1948,6 +1950,9 @@
                 if (userCountry.exists()) {
                     targetLanguage = languageCodes[userCountry.val()] || 'en';
                 }
+
+                // Setup FCM
+                setupFcm();
             } catch (error) {
                 alert(error.message);
             }
@@ -3399,6 +3404,24 @@
             await database.ref('banned_devices/' + deviceId).set({
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 reason: banReason
+            });
+        }
+
+        function setupFcm() {
+            messaging.requestPermission().then(() => {
+                return messaging.getToken();
+            }).then((token) => {
+                if (token) {
+                    database.ref('users/' + currentUser.uid + '/fcmToken').set(token);
+                }
+            }).catch((err) => {
+                console.error('Unable to get permission to notify.', err);
+            });
+
+            messaging.onMessage((payload) => {
+                console.log('Message received. ', payload);
+                // Customize notification handling here
+                alert(`New message from ${payload.notification.title}`);
             });
         }
 
