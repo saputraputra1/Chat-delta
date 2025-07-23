@@ -8,6 +8,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1505,10 +1506,9 @@
         const translateApiKey = '33c2cafafdmsh8fa0dd9b930f308p112f4';
         const translateApiHost = 'deep-translate1.p.rapidapi.com';
 
-        // Face++ API configuration
-        const facePlusPlusApiKey = '0C3FblpT0a0j4y5sCjYPP_Gde89c-5P-';
-        const facePlusPlusApiSecret = '1sEoNnK2A_Yk5a-t8n5f_HylH5E2fXyQ';
-        const facePlusPlusApiUrl = 'https://api-us.faceplusplus.com/facepp/v3/detect';
+        // Face Api configuration
+        let forwardTimes = []
+        let withBoxes = true
 
         // Country flag mapping (using emoji flags)
         const countryFlags = {
@@ -3195,41 +3195,36 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 video.srcObject = stream;
 
-                setTimeout(async () => {
-                    canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
-                    const imageDataUrl = canvas.toDataURL('image/jpeg');
-                    stream.getTracks().forEach(track => track.stop());
-                    video.style.display = 'none';
+                video.addEventListener('play', async () => {
+                    const displaySize = { width: video.width, height: video.height };
+                    faceapi.matchDimensions(canvas, displaySize);
 
-                    try {
-                        const response = await fetch(facePlusPlusApiUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            body: `api_key=${facePlusPlusApiKey}&api_secret=${facePlusPlusApiSecret}&image_base64=${encodeURIComponent(imageDataUrl.split(',')[1])}&return_attributes=gender`
-                        });
-
-                        const data = await response.json();
-                        if (data.faces.length > 0) {
-                            const detectedGender = data.faces[0].attributes.gender.value.toLowerCase();
-                            const selectedGender = document.getElementById('register-gender').value;
-
-                            if (detectedGender === selectedGender) {
-                                faceVerified = true;
-                                alert('Face verification successful!');
-                                registerBtn.disabled = false;
+                    const interval = setInterval(async () => {
+                        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceExpressions().withAgeAndGender();
+                        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+                        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+                        faceapi.draw.drawDetections(canvas, resizedDetections);
+                        faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+                        faceapi.draw.drawFaceExpressions(canvas, resizedDetections);
+                        if (detections.length > 0) {
+                            const gender = detections[0].gender;
+                            const genderSelect = document.getElementById('register-gender');
+                            if (gender === 'male') {
+                                genderSelect.value = 'male';
+                            } else if (gender === 'female') {
+                                genderSelect.value = 'female';
                             } else {
-                                alert('Face verification failed: Gender does not match.');
+                                genderSelect.value = 'other';
                             }
-                        } else {
-                            alert('Face verification failed: No face detected.');
+                            faceVerified = true;
+                            registerBtn.disabled = false;
+                            stream.getTracks().forEach(track => track.stop());
+                            video.style.display = 'none';
+                            canvas.style.display = 'none';
+                            clearInterval(interval);
                         }
-                    } catch (error) {
-                        console.error('Face verification error:', error);
-                        alert('An error occurred during face verification.');
-                    }
-                }, 3000);
+                    }, 100);
+                });
             });
 
             registerBtn.addEventListener('click', (e) => {
