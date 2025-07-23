@@ -1068,6 +1068,21 @@
             visibility: visible;
             opacity: 1;
         }
+
+        #face-verification-video, #face-verification-canvas {
+            width: 100%;
+            max-width: 320px;
+            height: auto;
+            display: none;
+            margin: 10px auto;
+            border-radius: 5px;
+        }
+
+        @media (max-width: 480px) {
+            #face-verification-video, #face-verification-canvas {
+                max-width: 100%;
+            }
+        }
     </style>
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -3199,49 +3214,66 @@
             const video = document.getElementById('face-verification-video');
             const canvas = document.getElementById('face-verification-canvas');
             const registerBtn = document.getElementById('register-btn');
+            const registerGender = document.getElementById('register-gender');
             let faceVerified = false;
 
-            faceVerificationBtn.addEventListener('click', async () => {
+            async function startFaceVerification() {
                 video.style.display = 'block';
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
 
-                setTimeout(async () => {
-                    canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
-                    const imageDataUrl = canvas.toDataURL('image/jpeg');
-                    stream.getTracks().forEach(track => track.stop());
-                    video.style.display = 'none';
+                    setTimeout(async () => {
+                        canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+                        const imageDataUrl = canvas.toDataURL('image/jpeg');
+                        stream.getTracks().forEach(track => track.stop());
+                        video.style.display = 'none';
 
-                    try {
-                        const response = await fetch(facePlusPlusApiUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            body: `api_key=${facePlusPlusApiKey}&api_secret=${facePlusPlusApiSecret}&image_base64=${encodeURIComponent(imageDataUrl.split(',')[1])}&return_attributes=gender`
-                        });
+                        try {
+                            const response = await fetch(facePlusPlusApiUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded'
+                                },
+                                body: `api_key=${facePlusPlusApiKey}&api_secret=${facePlusPlusApiSecret}&image_base64=${encodeURIComponent(imageDataUrl.split(',')[1])}&return_attributes=gender`
+                            });
 
-                        const data = await response.json();
-                        if (data.faces.length > 0) {
-                            const detectedGender = data.faces[0].attributes.gender.value.toLowerCase();
-                            const selectedGender = document.getElementById('register-gender').value;
+                            const data = await response.json();
+                            if (data.faces.length > 0) {
+                                const detectedGender = data.faces[0].attributes.gender.value.toLowerCase();
 
-                            if (detectedGender === selectedGender) {
+                                if (detectedGender === 'male') {
+                                    registerGender.value = 'male';
+                                } else if (detectedGender === 'female') {
+                                    registerGender.value = 'female';
+                                } else {
+                                    registerGender.value = 'other';
+                                }
+
                                 faceVerified = true;
                                 alert('Face verification successful!');
                                 registerBtn.disabled = false;
                             } else {
-                                alert('Face verification failed: Gender does not match.');
+                                alert('Face verification failed: No face detected.');
                             }
-                        } else {
-                            alert('Face verification failed: No face detected.');
+                        } catch (error) {
+                            console.error('Face verification error:', error);
+                            alert('An error occurred during face verification.');
                         }
-                    } catch (error) {
-                        console.error('Face verification error:', error);
-                        alert('An error occurred during face verification.');
-                    }
-                }, 3000);
+                    }, 3000);
+                } catch (err) {
+                    console.error("Error accessing camera: ", err);
+                    alert("Could not access camera. Please allow camera access to continue.");
+                }
+            }
+
+            showRegister.addEventListener('click', () => {
+                loginForm.style.display = 'none';
+                registerForm.style.display = 'block';
+                startFaceVerification();
             });
+
+            faceVerificationBtn.addEventListener('click', startFaceVerification);
 
             registerBtn.addEventListener('click', (e) => {
                 if (!faceVerified) {
