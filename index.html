@@ -1733,12 +1733,6 @@
                     throw new Error('Your IP or device is permanently banned.');
                 }
 
-                // Check if device already has an account
-                const deviceSnapshot = await database.ref('devices').orderByChild('deviceId').equalTo(deviceId).once('value');
-                if (deviceSnapshot.numChildren() >= 2) {
-                    throw new Error('You have reached the maximum number of accounts for this device (2).');
-                }
-                
                 // Create user with email and password
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 const user = userCredential.user;
@@ -1749,6 +1743,11 @@
                     avatarUrl = await uploadImage(selectedAvatarFile, user.uid);
                 }
                 
+                // Pass deviceId to user profile for server-side check
+                await user.updateProfile({
+                    photoURL: deviceId
+                });
+
                 // Save user data to database
                 const countryCode = ipInfo.country.toLowerCase();
                 const userData = {

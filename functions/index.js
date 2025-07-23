@@ -22,3 +22,38 @@ exports.checkMessage = functions.database.ref('/messages/{messageId}')
             }
         }
     });
+
+exports.checkUserOnCreate = functions.auth.user().onCreate(async (user) => {
+    const ipAddress = user.metadata.lastSignInIpAddress;
+    const deviceId = user.photoURL; // Assuming deviceId is passed in photoURL during registration
+
+    if (deviceId) {
+        const deviceRef = admin.database().ref(`devices/${deviceId}`);
+        const deviceSnapshot = await deviceRef.once('value');
+        if (deviceSnapshot.exists()) {
+            await admin.auth().updateUser(user.uid, { disabled: true });
+            await admin.database().ref(`banned_devices/${deviceId}`).set({
+                timestamp: admin.database.ServerValue.TIMESTAMP,
+                reason: 'Multiple accounts on one device.'
+            });
+            return;
+        } else {
+            await deviceRef.set({
+                userId: user.uid,
+                registeredAt: admin.database.ServerValue.TIMESTAMP
+            });
+        }
+    }
+
+    if (ipAddress) {
+        const response = await fetch(`https://ipinfo.io/${ipAddress}?token=c67223614a53f0`);
+        const data = await response.json();
+        if (data.privacy && (data.privacy.vpn || data.privacy.proxy || data.privacy.tor)) {
+            await admin.auth().updateUser(user.uid, { disabled: true });
+            await admin.database().ref(`banned_ips/${ipAddress.replace(/\./g, '_')}`).set({
+                timestamp: admin.database.ServerValue.TIMESTAMP,
+                reason: 'VPN usage detected during registration.'
+            });
+        }
+    }
+});
