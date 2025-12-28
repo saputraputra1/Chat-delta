@@ -12,43 +12,42 @@
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
         :root {
-            --bg-gradient-start: #ee7752;
-            --bg-gradient-mid1: #e73c7e;
-            --bg-gradient-mid2: #23a6d5;
-            --bg-gradient-end: #23d5ab;
-            --container-bg: rgba(0, 0, 0, 0.7);
-            --text-color: white;
-            --input-bg: rgba(255, 255, 255, 0.2);
-            --header-bg: rgba(0, 0, 0, 0.5);
-            --sidebar-bg: rgba(0, 0, 0, 0.4);
-            --message-bg: rgba(255, 255, 255, 0.1);
+            --bg-gradient-start: #6a11cb;
+            --bg-gradient-end: #2575fc;
+            --container-bg: rgba(255, 255, 255, 0.1);
+            --text-color: #f0f0f0;
+            --input-bg: rgba(255, 255, 255, 0.15);
+            --header-bg: rgba(0, 0, 0, 0.2);
+            --sidebar-bg: rgba(0, 0, 0, 0.1);
+            --message-bg: rgba(255, 255, 255, 0.05);
+            --primary-color: #00aaff;
+            --success-color: #4CAF50;
+            --error-color: #f44336;
         }
 
         .dark-mode {
-            --bg-gradient-start: #232526;
-            --bg-gradient-mid1: #414345;
-            --bg-gradient-mid2: #232526;
-            --bg-gradient-end: #414345;
-            --container-bg: rgba(0, 0, 0, 0.8);
-            --text-color: #f1f1f1;
-            --input-bg: rgba(255, 255, 255, 0.1);
-            --header-bg: rgba(10, 10, 10, 0.7);
-            --sidebar-bg: rgba(20, 20, 20, 0.6);
-            --message-bg: rgba(255, 255, 255, 0.05);
+            --bg-gradient-start: #141e30;
+            --bg-gradient-end: #243b55;
+            --container-bg: rgba(0, 0, 0, 0.3);
+            --text-color: #e0e0e0;
+            --input-bg: rgba(255, 255, 255, 0.08);
+            --header-bg: rgba(0, 0, 0, 0.4);
+            --sidebar-bg: rgba(0, 0, 0, 0.2);
+            --message-bg: rgba(255, 255, 255, 0.03);
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Poppins', sans-serif;
             -webkit-tap-highlight-color: transparent;
         }
 
         body {
-            background: linear-gradient(-45deg, var(--bg-gradient-start), var(--bg-gradient-mid1), var(--bg-gradient-mid2), var(--bg-gradient-end));
-            background-size: 400% 400%;
-            animation: gradient 15s ease infinite;
+            background: linear-gradient(-45deg, var(--bg-gradient-start), var(--bg-gradient-end));
+            background-size: 200% 200%;
+            animation: gradient 10s ease infinite;
             height: 100vh;
             overflow: hidden;
             color: var(--text-color);
@@ -74,7 +73,10 @@
             margin: 0 auto;
             height: 100vh;
             background-color: var(--container-bg);
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
             overflow: hidden;
         }
 
@@ -111,9 +113,10 @@
 
         .auth-form h2 {
             text-align: center;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
             color: #fff;
-            font-size: 1.5rem;
+            font-size: 1.8rem;
+            font-weight: 600;
         }
 
         .form-group {
@@ -129,12 +132,13 @@
 
         .form-group input, .form-group textarea, .form-group select {
             width: 100%;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
             background-color: var(--input-bg);
             color: var(--text-color);
             font-size: 1rem;
+            transition: all 0.3s ease;
         }
 
         .form-group textarea {
@@ -148,21 +152,23 @@
         }
 
         button {
-            background-color: #4CAF50;
+            background-color: var(--primary-color);
             color: white;
             border: none;
             padding: 12px 15px;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
             width: 100%;
-            font-weight: bold;
-            transition: all 0.3s;
+            font-weight: 600;
+            transition: all 0.3s ease;
             font-size: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
 
         button:hover {
-            background-color: #45a049;
-            transform: translateY(-2px);
+            background-color: #0099e6;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
         }
 
         .toggle-auth {
@@ -231,11 +237,11 @@
         }
 
         .user-item {
-            padding: 8px;
+            padding: 10px;
             margin-right: 8px;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
             display: flex;
             align-items: center;
             background-color: rgba(255, 255, 255, 0.1);
@@ -246,6 +252,8 @@
 
         .user-item:hover {
             background-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-3px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
 
         .user-item.active {
@@ -1162,6 +1170,9 @@
     </style>
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
 </head>
 <body>
     <!-- Background bubbles animation -->
