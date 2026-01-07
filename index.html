@@ -1382,13 +1382,24 @@
                             <i class="fas fa-book-open"></i>
                             <span class="tooltiptext">Stories</span>
                         </button>
+                        <button id="create-group-btn" class="control-btn tooltip">
+                            <i class="fas fa-users"></i>
+                            <span class="tooltiptext">Create Group</span>
+                        </button>
                     </div>
                 </div>
             </div>
             
             <div class="chat-main">
                 <div class="users-sidebar">
-                    <ul id="users-list" class="users-list"></ul>
+                    <div id="groups-list-container">
+                        <h3>Groups</h3>
+                        <ul id="groups-list" class="users-list"></ul>
+                    </div>
+                    <div id="users-list-container">
+                        <h3>Users</h3>
+                        <ul id="users-list" class="users-list"></ul>
+                    </div>
                 </div>
                 <div class="chat-area">
                     <div id="profile-view" class="profile-view">
@@ -1433,6 +1444,10 @@
                     </div>
                     <div id="chat-messages-container" class="chat-messages-container"></div>
                     <div class="message-input-container">
+                        <input type="file" id="image-upload-input" style="display: none;" accept="image/*">
+                        <button id="upload-image-btn" class="send-button" style="width: 50px;">
+                            <i class="fas fa-camera"></i>
+                        </button>
                         <input type="text" id="message-input" class="message-input" placeholder="Type your message...">
                         <button id="send-btn" class="send-button">
                             <i class="fas fa-paper-plane"></i> Send
@@ -1474,6 +1489,29 @@
                         <i class="fas fa-times"></i> Cancel
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Create Group Modal -->
+        <div id="create-group-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center;">
+            <div class="auth-form">
+                <h2>Create New Group</h2>
+                <div class="form-group">
+                    <label for="group-name">Group Name</label>
+                    <input type="text" id="group-name" placeholder="Enter group name">
+                </div>
+                <div class="form-group">
+                    <label for="group-description">Group Description</label>
+                    <textarea id="group-description" placeholder="Enter group description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Select Members</label>
+                    <div id="group-members-list" style="height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 5px;">
+                        <!-- User list will be populated here -->
+                    </div>
+                </div>
+                <button id="create-group-submit-btn">Create Group</button>
+                <button id="cancel-group-creation-btn" class="logout-btn" style="margin-top: 10px;">Cancel</button>
             </div>
         </div>
 
@@ -1597,6 +1635,14 @@
         const unfollowBtn = document.getElementById('unfollow-btn');
         const allMessagesList = document.getElementById('all-messages-list');
         const unreadMessagesList = document.getElementById('unread-messages-list');
+        const createGroupBtn = document.getElementById('create-group-btn');
+        const createGroupModal = document.getElementById('create-group-modal');
+        const groupMembersList = document.getElementById('group-members-list');
+        const createGroupSubmitBtn = document.getElementById('create-group-submit-btn');
+        const cancelGroupCreationBtn = document.getElementById('cancel-group-creation-btn');
+        const groupsList = document.getElementById('groups-list');
+        const uploadImageBtn = document.getElementById('upload-image-btn');
+        const imageUploadInputHandler = document.getElementById('image-upload-input');
         const followingList = document.getElementById('following-list');
         const messageTabs = document.querySelectorAll('.messages-tab');
         const profileAvatarPreview = document.getElementById('profile-avatar-preview');
@@ -1631,6 +1677,7 @@
         let unreadMessages = {};
         let messageListeners = {};
         let userListeners = {};
+        let currentGroup = null;
         let followListeners = {};
         let selectedAvatarFile = null;
         let translateEnabled = false;
@@ -1811,7 +1858,7 @@
         });
 
         // Handle avatar upload for profile
-        profileAvatarUpload.addEventListener('change', (e) => {
+        profileAvatarUpload.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
                 if (file.size > 2 * 1024 * 1024) {
@@ -1824,7 +1871,19 @@
                     profileAvatarPreview.src = event.target.result;
                 };
                 reader.readAsDataURL(file);
-                selectedAvatarFile = file;
+
+                try {
+                    const avatarUrl = await uploadImage(file, currentUser.uid);
+                    if (avatarUrl) {
+                        await database.ref('users/' + currentUser.uid).update({
+                            avatar: avatarUrl
+                        });
+                        alert('Profile picture updated successfully!');
+                        loadUsers(); // Refresh user list to show new avatar
+                    }
+                } catch (error) {
+                    alert('Error updating profile picture: ' + error.message);
+                }
             }
         });
 
@@ -2652,6 +2711,23 @@
             });
         }
 
+        // Load group messages
+        function loadGroupMessages(groupId) {
+            chatMessagesContainer.innerHTML = '';
+
+            // Remove previous listener if exists
+            if (messageListeners[groupId]) {
+                database.ref('group_messages/' + groupId).off('child_added', messageListeners[groupId]);
+            }
+
+            const messagesRef = database.ref('group_messages/' + groupId).orderByChild('timestamp');
+
+            messageListeners[groupId] = messagesRef.on('child_added', (snapshot) => {
+                const message = snapshot.val();
+                displayMessage(message);
+            });
+        }
+
         // Load messages between current user and selected user
         function loadMessages(otherUserId) {
             chatMessagesContainer.innerHTML = '';
@@ -2694,6 +2770,13 @@
                 const username = user.username;
                 const avatar = user.avatar || defaultAvatar;
                 
+                let messageContentHtml = '';
+                if (message.content) {
+                    messageContentHtml = `<div class="message-content">${message.content}</div>`;
+                } else if (message.imageUrl) {
+                    messageContentHtml = `<div class="message-content"><img src="${message.imageUrl}" style="max-width: 100%; border-radius: 5px;"></div>`;
+                }
+
                 messageElement.innerHTML = `
                     <div class="message-header">
                         <img class="message-avatar" src="${avatar}" alt="${username}">
@@ -2702,7 +2785,7 @@
                         </div>
                         <span class="message-time">${formatTime(message.timestamp)}</span>
                     </div>
-                    <div class="message-content">${message.content}</div>
+                    ${messageContentHtml}
                 `;
                 
                 chatMessagesContainer.appendChild(messageElement);
@@ -3025,47 +3108,59 @@
 
         // Send message
         async function sendMessage() {
-            if (!currentChatWith) {
-                alert('Please select a user to chat with');
-                return;
-            }
-
             const content = messageInput.value.trim();
             if (!content) return;
 
-            // Get receiver's language preference for automatic translation
-            let receiverLanguage = 'en';
-            try {
-                const receiverSnapshot = await database.ref('users/' + currentChatWith + '/language').once('value');
-                receiverLanguage = receiverSnapshot.val() || 'en';
-            } catch (error) {
-                console.error('Error getting receiver language:', error);
+            if (currentGroup) {
+                // Send group message
+                const message = {
+                    senderId: currentUser.uid,
+                    content: content,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                };
+                database.ref('group_messages/' + currentGroup).push(message)
+                    .then(() => {
+                        messageInput.value = '';
+                    })
+                    .catch((error) => {
+                        alert('Error sending message: ' + error.message);
+                    });
+            } else if (currentChatWith) {
+                // Send one-on-one message
+                let receiverLanguage = 'en';
+                try {
+                    const receiverSnapshot = await database.ref('users/' + currentChatWith + '/language').once('value');
+                    receiverLanguage = receiverSnapshot.val() || 'en';
+                } catch (error) {
+                    console.error('Error getting receiver language:', error);
+                }
+
+                let finalContent = content;
+                if (receiverLanguage !== 'en') {
+                    finalContent = await translateMessage(content, receiverLanguage);
+                }
+
+                const message = {
+                    senderId: currentUser.uid,
+                    receiverId: currentChatWith,
+                    content: finalContent,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    conversationId: getConversationId(currentUser.uid, currentChatWith),
+                    read: false,
+                    originalLanguage: 'en',
+                    translatedLanguage: receiverLanguage !== 'en' ? receiverLanguage : null
+                };
+
+                database.ref('messages').push(message)
+                    .then(() => {
+                        messageInput.value = '';
+                    })
+                    .catch((error) => {
+                        alert('Error sending message: ' + error.message);
+                    });
+            } else {
+                alert('Please select a user or group to chat with');
             }
-
-            // If receiver's language is different from sender's, translate automatically
-            let finalContent = content;
-            if (receiverLanguage !== 'en') {
-                finalContent = await translateMessage(content, receiverLanguage);
-            }
-
-            const message = {
-                senderId: currentUser.uid,
-                receiverId: currentChatWith,
-                content: finalContent,
-                timestamp: firebase.database.ServerValue.TIMESTAMP,
-                conversationId: getConversationId(currentUser.uid, currentChatWith),
-                read: false,
-                originalLanguage: 'en', // Assuming sender always types in English
-                translatedLanguage: receiverLanguage !== 'en' ? receiverLanguage : null
-            };
-
-            database.ref('messages').push(message)
-                .then(() => {
-                    messageInput.value = '';
-                })
-                .catch((error) => {
-                    alert('Error sending message: ' + error.message);
-                });
         }
 
         // Send message on button click or Enter key
@@ -3075,6 +3170,128 @@
                 sendMessage();
             }
         });
+
+        // Trigger file input when upload image button is clicked
+        uploadImageBtn.addEventListener('click', () => {
+            imageUploadInputHandler.click();
+        });
+
+        // Handle image upload
+        imageUploadInputHandler.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                    alert('Image size should be less than 5MB');
+                    return;
+                }
+
+                try {
+                    const imageUrl = await uploadChatMessageImage(file);
+                    if (imageUrl) {
+                        sendImageMessage(imageUrl);
+                    }
+                } catch (error) {
+                    alert('Error uploading image: ' + error.message);
+                }
+            }
+        });
+
+        // Upload chat message image
+        async function uploadChatMessageImage(file) {
+            const storageRef = storage.ref(`chat_images/${currentUser.uid}/${Date.now()}_${file.name}`);
+            const snapshot = await storageRef.put(file);
+            return snapshot.ref.getDownloadURL();
+        }
+
+        // Send image message
+        function sendImageMessage(imageUrl) {
+            const message = {
+                senderId: currentUser.uid,
+                imageUrl: imageUrl,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+            };
+
+            if (currentGroup) {
+                database.ref('group_messages/' + currentGroup).push(message);
+            } else if (currentChatWith) {
+                message.receiverId = currentChatWith;
+                message.conversationId = getConversationId(currentUser.uid, currentChatWith);
+                message.read = false;
+                database.ref('messages').push(message);
+            }
+        }
+
+        // Show create group modal
+        createGroupBtn.addEventListener('click', () => {
+            createGroupModal.style.display = 'flex';
+            populateGroupMembersList();
+        });
+
+        // Cancel group creation
+        cancelGroupCreationBtn.addEventListener('click', () => {
+            createGroupModal.style.display = 'none';
+        });
+
+        // Create group
+        createGroupSubmitBtn.addEventListener('click', async () => {
+            const groupName = document.getElementById('group-name').value;
+            const groupDescription = document.getElementById('group-description').value;
+            const selectedMembers = Array.from(document.querySelectorAll('#group-members-list input:checked')).map(input => input.value);
+
+            if (!groupName || selectedMembers.length === 0) {
+                alert('Please provide a group name and select at least one member.');
+                return;
+            }
+
+            const members = {
+                [currentUser.uid]: {
+                    role: 'admin',
+                    joinedAt: firebase.database.ServerValue.TIMESTAMP
+                }
+            };
+            selectedMembers.forEach(memberId => {
+                members[memberId] = {
+                    role: 'member',
+                    joinedAt: firebase.database.ServerValue.TIMESTAMP
+                };
+            });
+
+            const newGroupRef = database.ref('groups').push();
+            try {
+                await newGroupRef.set({
+                    name: groupName,
+                    description: groupDescription,
+                    createdBy: currentUser.uid,
+                    createdAt: firebase.database.ServerValue.TIMESTAMP,
+                    members: members
+                });
+
+                alert('Group created successfully!');
+                createGroupModal.style.display = 'none';
+                loadGroups();
+            } catch (error) {
+                alert('Error creating group: ' + error.message);
+            }
+        });
+
+        // Populate group members list
+        async function populateGroupMembersList() {
+            groupMembersList.innerHTML = '';
+            const snapshot = await database.ref('users').once('value');
+            const users = snapshot.val();
+            for (const userId in users) {
+                if (userId !== currentUser.uid) {
+                    const user = users[userId];
+                    const checkbox = `
+                        <div>
+                            <input type="checkbox" id="user-${userId}" value="${userId}">
+                            <label for="user-${userId}">${user.username}</label>
+                        </div>
+                    `;
+                    groupMembersList.innerHTML += checkbox;
+                }
+            }
+        }
 
         async function getLeaderboardData() {
             const usersSnapshot = await database.ref('users').once('value');
@@ -3363,6 +3580,36 @@
                 alert('Could not retrieve your location. Please disable any ad-blockers and try again.');
                 return null;
             }
+        }
+
+        // Load groups
+        function loadGroups() {
+            database.ref('groups').on('value', (snapshot) => {
+                groupsList.innerHTML = '';
+                const groups = snapshot.val();
+                for (const groupId in groups) {
+                    const group = groups[groupId];
+                    if (group.members && group.members[currentUser.uid]) {
+                        const groupItem = document.createElement('li');
+                        groupItem.className = 'user-item';
+                        groupItem.innerHTML = `
+                            <div class="user-avatar" style="background-color: #ccc;">G</div>
+                            <div class="user-info">
+                                <div class="user-name">${group.name}</div>
+                            </div>
+                        `;
+                        groupItem.addEventListener('click', () => {
+                            currentChatWith = null;
+                            currentGroup = groupId;
+                            document.querySelectorAll('.user-item').forEach(item => item.classList.remove('active'));
+                            groupItem.classList.add('active');
+                            profileView.style.display = 'none';
+                            loadGroupMessages(groupId);
+                        });
+                        groupsList.appendChild(groupItem);
+                    }
+                }
+            });
         }
 
         // Check auth state on page load
